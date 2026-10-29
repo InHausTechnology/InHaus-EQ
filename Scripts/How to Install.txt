@@ -1,0 +1,19 @@
+InHaus EQ: How to Install
+=========================
+
+1. Drag "InHaus EQ" onto the Applications folder in this window.
+
+2. Open InHaus EQ from your Applications folder.
+   macOS will say it can't verify the app. That's because InHaus EQ comes
+   from an independent developer and isn't notarized by Apple. Click "Done".
+
+3. Open System Settings > Privacy & Security, scroll down to Security,
+   and click "Open Anyway" next to InHaus EQ. Confirm with your password
+   or Touch ID. You only have to do this once.
+
+4. When InHaus EQ asks to record system audio, click "Allow". That's how
+   the EQ reaches your audio. Nothing is recorded or saved.
+
+InHaus EQ lives in your menu bar (top right of your screen), not the Dock.
+
+Requires macOS 14.2 (Sonoma) or later.

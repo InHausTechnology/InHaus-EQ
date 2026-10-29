@@ -1,0 +1,11 @@
+# Build output
+build/
+dist/
+DerivedData/
+
+# Xcode per-user files
+xcuserdata/
+*.xcuserstate
+
+# macOS
+.DS_Store
