@@ -38,7 +38,29 @@ final class EQModel {
     var preampDB: Float = 0 { didSet { changed(bands: true) } }
     var masterPercent: Float = 100 { didSet { changed(master: true) } }
     var bypass = false { didSet { audio.setBypass(bypass) } }
-    var headphone: HeadphoneProfile? = nil { didSet { changed(bands: true) } }
+    /// Picking (or clearing) a headphone profile starts fresh: your slider and preamp
+    /// changes are cleared, so the sliders show exactly that profile.
+    var headphone: HeadphoneProfile? = nil {
+        didSet {
+            guard !applying else { return }
+            apply { model in
+                model.gains = Array(repeating: 0, count: Self.frequencies.count)
+                model.preampDB = 0
+            }
+        }
+    }
+
+    /// True once you've moved any slider or the preamp away from where the profile put them.
+    var isAdjusted: Bool {
+        gains.contains { $0 != 0 } || preampDB != 0
+    }
+
+    /// What to call the current headphone setting: the profile's name, or "Custom" once
+    /// you've changed it. nil without a profile.
+    var headphoneTitle: String? {
+        guard let profile = headphone else { return nil }
+        return isAdjusted ? "Custom" : profile.name
+    }
 
     /// The device these settings belong to.
     private(set) var deviceName = ""
@@ -74,6 +96,45 @@ final class EQModel {
         return (bands, (headphone?.preampDB ?? 0) + preampDB)
     }
 
+    // MARK: - What the sliders show
+    //
+    // With a headphone profile on, the sliders start at the correction: slider i shows the
+    // correction at its frequency plus your own adjustment (gains[i]), and the preamp slider
+    // shows the profile's preamp plus yours. The correction's exact filters keep running;
+    // moving a slider only changes your adjustment. Without a profile, correction is 0.
+
+    /// The headphone correction's filters at each slider's frequency, in dB (preamp not
+    /// included; that's on the preamp slider). All zeros without a profile.
+    func correctionAtBands() -> [Float] {
+        guard let profile = headphone, !profile.filters.isEmpty else {
+            return Array(repeating: 0, count: Self.frequencies.count)
+        }
+        let filters = profile.filters.prefix(AutoEQParser.maxFilters).map {
+            EQBand(type: $0.type, freqHz: $0.freqHz, gainDB: $0.gainDB, q: $0.q, enabled: 1)
+        }
+        let rate = audio.sampleRate > 0 ? audio.sampleRate : 48000
+        return filters.withUnsafeBufferPointer { buffer in
+            Self.frequencies.map { hz in
+                Float(eq_response_db(buffer.baseAddress, Int32(buffer.count), 0, rate, Double(hz)))
+            }
+        }
+    }
+
+    /// The headphone profile's preamp (0 without one).
+    var correctionPreampDB: Float { headphone?.preampDB ?? 0 }
+
+    /// Your adjustment for a slider showing `shown` when the correction there is `base`.
+    /// Landing within a quarter dB of the correction counts as "no adjustment".
+    static func adjustment(showing shown: Float, base: Float) -> Float {
+        let difference = shown - base
+        guard difference.isFinite, abs(difference) >= 0.25 else { return 0 }
+        return min(max(difference, adjustRange.lowerBound), adjustRange.upperBound)
+    }
+
+    /// How far your own adjustments can go (wider than the sliders, since they sit on top
+    /// of a correction that may already be well above or below 0).
+    static let adjustRange: ClosedRange<Float> = -24...24
+
     /// Master volume as dB. 100% = 0 dB, 200% = +6 dB, 400% = +12 dB.
     var masterDB: Float {
         guard masterPercent > 0 else { return -60 }
@@ -99,9 +160,9 @@ final class EQModel {
     func apply(_ profile: DeviceProfile) {
         apply { model in
             model.gains = profile.gains.count == Self.frequencies.count
-                ? profile.gains.map { Self.clamp($0, Self.gainRange) }
+                ? profile.gains.map { Self.clamp($0, Self.adjustRange) }
                 : Array(repeating: 0, count: Self.frequencies.count)
-            model.preampDB = Self.clamp(profile.preampDB, Self.preampRange)
+            model.preampDB = Self.clamp(profile.preampDB, Self.adjustRange)
             model.masterPercent = profile.masterPercent.isFinite
                 ? Self.clamp(profile.masterPercent, Self.masterRange) : 100
             model.headphone = profile.headphone

@@ -23,10 +23,15 @@ struct HeadphonePicker: View {
             HStack(spacing: 6) {
                 Image(systemName: "headphones")
                     .foregroundStyle(.secondary)
-                Text(model.headphone?.name ?? "No headphone profile")
+                Text(model.headphoneTitle ?? "No headphone profile")
                     .lineLimit(1)
-                    .truncationMode(.middle)
                     .foregroundStyle(model.headphone == nil ? Color.secondary : Color.primary)
+                if let profile = model.headphone, model.isAdjusted {
+                    Text("based on \(profile.name)")
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer(minLength: 4)
                 if model.headphone != nil {
                     Button {

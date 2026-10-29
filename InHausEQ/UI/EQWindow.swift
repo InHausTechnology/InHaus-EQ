@@ -60,42 +60,73 @@ struct EQWindowView: View {
             Toggle("EQ on", isOn: Binding(get: { !model.bypass }, set: { model.bypass = !$0 }))
                 .toggleStyle(.switch)
             Button("Reset") { model.reset() }
-                .help("Set every band and the preamp back to 0 dB")
+                .help(model.headphone == nil
+                      ? "Set every band and the preamp back to 0 dB"
+                      : "Undo your changes: the sliders go back to the headphone correction")
         }
     }
 
     private var faders: some View {
-        HStack(alignment: .top, spacing: 0) {
-            ForEach(EQModel.frequencies.indices, id: \.self) { i in
-                VStack(spacing: 6) {
-                    Text(Self.format(model.gains[i]))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(model.gains[i] == 0 ? Color.secondary : Color.primary)
-                    VerticalFader(value: $model.gains[i], range: EQModel.gainRange,
-                                  label: "\(EQModel.labels[i]) hertz")
-                    Text(EQModel.labels[i])
-                        .font(.caption.weight(.medium))
-                        .onTapGesture(count: 2) { model.gains[i] = 0 }
-                        .help("Double-click to reset this band")
+        let correction = model.correctionAtBands()
+        return VStack(alignment: .leading, spacing: 8) {
+            if let profile = model.headphone {
+                Text(model.isAdjusted
+                     ? "Custom, based on the \(profile.name) correction. Reset goes back to it."
+                     : "Sliders start at the \(profile.name) correction. Move any of them to fine-tune it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            HStack(alignment: .top, spacing: 0) {
+                ForEach(EQModel.frequencies.indices, id: \.self) { i in
+                    let shown = correction[i] + model.gains[i]
+                    VStack(spacing: 6) {
+                        Text(Self.format(shown))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(abs(shown) < 0.05 ? Color.secondary : Color.primary)
+                        VerticalFader(value: sliderBinding(i, base: correction[i]), range: EQModel.gainRange,
+                                      label: "\(EQModel.labels[i]) hertz")
+                        Text(EQModel.labels[i])
+                            .font(.caption.weight(.medium))
+                            .onTapGesture(count: 2) { model.gains[i] = 0 }
+                            .help(model.headphone == nil
+                                  ? "Double-click to reset this band"
+                                  : "Double-click to put this band back to the correction")
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
             }
         }
         .disabled(model.bypass)
         .opacity(model.bypass ? 0.5 : 1)
     }
 
+    /// Slider i shows the correction there plus your adjustment; moving it changes only
+    /// your adjustment.
+    private func sliderBinding(_ i: Int, base: Float) -> Binding<Float> {
+        Binding(
+            get: { base + model.gains[i] },
+            set: { model.gains[i] = EQModel.adjustment(showing: $0, base: base) }
+        )
+    }
+
     private var preampRow: some View {
-        HStack(spacing: 12) {
+        let base = model.correctionPreampDB
+        return HStack(spacing: 12) {
             Text("Preamp")
                 .frame(width: 64, alignment: .leading)
-            Slider(value: $model.preampDB, in: EQModel.preampRange)
-            Text(String(format: "%+.1f dB", model.preampDB))
+            Slider(value: Binding(get: { base + model.preampDB },
+                                  set: { model.preampDB = EQModel.adjustment(showing: $0, base: base) }),
+                   in: EQModel.preampRange)
+            Text(String(format: "%+.1f dB", base + model.preampDB))
                 .font(.callout.monospacedDigit())
                 .frame(width: 70, alignment: .trailing)
                 .onTapGesture(count: 2) { model.preampDB = 0 }
         }
-        .help("Turn this down if big boosts start to distort")
+        .help(model.headphone == nil
+              ? "Turn this down if big boosts start to distort"
+              : "Starts at the headphone profile's preamp. Turn it down if boosts start to distort")
     }
 
     private var headphoneRow: some View {
@@ -104,10 +135,14 @@ struct EQWindowView: View {
                 Image(systemName: "headphones")
                     .foregroundStyle(.secondary)
                 if let profile = model.headphone {
-                    Text(profile.name)
+                    Text(model.headphoneTitle ?? profile.name)
                         .fontWeight(.medium)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                    if model.isAdjusted {
+                        Text("based on \(profile.name)")
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
                 } else {
                     Text("No headphone profile")
                         .foregroundStyle(.secondary)
@@ -197,7 +232,8 @@ struct VerticalFader: View {
         GeometryReader { geo in
             let track = max(geo.size.height - Self.pad * 2, 1)
             let span = range.upperBound - range.lowerBound
-            let thumbY = Self.pad + track * CGFloat(1 - (value - range.lowerBound) / span)
+            let drawn = min(max(value, range.lowerBound), range.upperBound)   // a correction can sit past the ends
+            let thumbY = Self.pad + track * CGFloat(1 - (drawn - range.lowerBound) / span)
             let zeroY = Self.pad + track * CGFloat(1 - (0 - range.lowerBound) / span)
 
             ZStack(alignment: .top) {
