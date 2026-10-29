@@ -82,6 +82,6 @@ Quit InHaus EQ (the Quit button at the bottom of its menu bar panel) and drag it
 
 Headphone corrections come from [AutoEQ](https://github.com/jaakkopasanen/AutoEq) by Jaakko Pasanen (MIT License), built from measurements by oratory1990, crinacle, Rtings and others credited in that project.
 
----
+## License
 
-© 2026 Peyton Gibbs
+InHaus EQ is released under the [MIT License](LICENSE). © 2026 Peyton Gibbs
